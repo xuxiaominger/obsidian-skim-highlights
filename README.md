@@ -1,43 +1,61 @@
-# Skim Highlights → Obsidian 剪贴板卡片
+# Skim Highlights
 
-**Skim 中高亮 → 自动复制到剪贴板 → 粘贴到任意 Obsidian 笔记。零操作。**
+**Highlight in Skim → auto-copied to clipboard → paste anywhere in your notes. Zero clicks.**
 
-## 工作方式
+## How It Works
 
-插件在 Obsidian 内轮询 Skim，每 1.5 秒检测新高亮。一旦你在 Skim 中划了高亮：
+The plugin polls Skim from within your note-taking app every 1.5 seconds, detecting new highlights. When you highlight text in Skim:
 
-1. 卡片自动进入剪贴板
-2. 到 Obsidian 任意笔记 `Cmd+V` 粘贴
-3. 点击卡片中的 `📖 pXX` 链接 → Skim 跳回原文位置
+1. A markdown card is auto-copied to your clipboard
+2. Paste with `Cmd+V` into any note
+3. Click the `📖 pXX` link to jump back to the exact PDF page
 
-## 卡片格式
+## Card Format
 
 ```markdown
-> [!quote]+ 第 187 页
+> [!quote]+ Page 187
 > One advantage of functions is the way they separate...
-> 
+>
 > 📖 [p187](file:///tmp/skim_links/p187.command)
 ```
 
-## 安装
+## Installation
 
-1. 下载 `main.js`、`manifest.json`、`versions.json`
-2. 放入 `.obsidian/plugins/skim-highlights/`
-3. 启用插件 — 状态栏出现 🟢 Skim监听
-4. macOS + Skim 必须
+### From Community Plugins (Recommended)
 
-## 控制
+1. Open Settings → Community Plugins
+2. Turn off Restricted Mode if prompted
+3. Click Browse and search for "Skim Highlights"
+4. Install and Enable
 
-| 方式 | 操作 |
-|------|------|
-| 状态栏 | 🟢 运行中 / ⚫ 已停止 |
-| 侧边栏 | 高亮笔图标点击启停 |
-| 命令面板 | `Skim 高亮监听: 启停` |
+### Manual Installation
 
-## 首次使用
+1. Download `main.js`, `manifest.json`, and `versions.json` from the latest release
+2. Create a folder: `.obsidian/plugins/skim-highlights/`
+3. Copy the three files into that folder
+4. Enable the plugin in Settings → Community Plugins
+5. You should see a 🟢 indicator in the status bar
 
-首次点击 `📖 pXX` 链接时 macOS 可能弹确认框，点"打开"即可。
+### Requirements
 
-## 许可证
+- macOS (uses AppleScript to communicate with Skim)
+- [Skim PDF Reader](https://skim-app.sourceforge.io/) installed
+- Desktop app (not compatible with mobile)
+
+## Usage
+
+| Control | Action |
+|---------|--------|
+| Status bar | 🟢 Listening / ⚫ Stopped — click to toggle |
+| Ribbon icon | Highlight pen icon — click to toggle |
+| Command palette | `Skim Highlights: Toggle` |
+
+Once enabled, just highlight text in Skim as you normally would. Each new highlight is automatically copied to your clipboard as a formatted markdown card.
+
+## First-Time Setup
+
+The first time you click a `📖 pXX` link, macOS may prompt you to allow opening the file. Click "Open" to confirm.
+
+## License
 
 MIT

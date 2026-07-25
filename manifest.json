@@ -1,10 +1,10 @@
 {
   "id": "skim-highlights",
   "name": "Skim Highlights",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "minAppVersion": "0.15.0",
-  "description": "Skim\u9ad8\u4eae\u81ea\u52a8\u590d\u5236\u5230\u526a\u8d34\u677f\uff0c\u7c98\u8d34\u5230Obsidian\u4efb\u610f\u7b14\u8bb0\uff0c\u70b9\u51fb\u94fe\u63a5\u8df3\u56dePDF\u539f\u6587",
+  "description": "Auto-copy Skim PDF highlights to clipboard and paste as markdown cards with page links.",
   "author": "Hermes",
-  "authorUrl": "",
+  "authorUrl": "https://github.com/xuxiaominger/obsidian-skim-highlights",
   "isDesktopOnly": true
 }
