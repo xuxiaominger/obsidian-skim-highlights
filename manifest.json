@@ -5,6 +5,6 @@
   "minAppVersion": "0.15.0",
   "description": "Auto-copy Skim PDF highlights to clipboard and paste as markdown cards with page links.",
   "author": "Hermes",
-  "authorUrl": "https://github.com/xuxiaominger/obsidian-skim-highlights",
+  "authorUrl": "https://github.com/xuxiaominger",
   "isDesktopOnly": true
 }
