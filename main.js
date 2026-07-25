@@ -158,13 +158,20 @@ module.exports = class SkimHighlightsPlugin extends Plugin {
       'with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".pdfpath")) as f:\n' +
       '    filepath = urllib.parse.unquote(f.read().strip())\n' +
       'asc = "tell application \\\"Skim\\\"\\n" + \\\n' +
+      '  "  set found to false\\n" + \\\n' +
       '  "  repeat with d in documents\\n" + \\\n' +
       '  "    if (path of d) is \\\"" + filepath + "\\\" then\\n" + \\\n' +
+      '  "      set found to true\\n" + \\\n' +
       '  "      tell d to go to page " + page + "\\n" + \\\n' +
-      '  "      activate\\n" + \\\n' +
       '  "      exit repeat\\n" + \\\n' +
       '  "    end if\\n" + \\\n' +
       '  "  end repeat\\n" + \\\n' +
+      '  "  if not found then\\n" + \\\n' +
+      '  "    open \\\"" + filepath + "\\\"\\n" + \\\n' +
+      '  "    delay 0.3\\n" + \\\n' +
+      '  "    tell front document to go to page " + page + "\\n" + \\\n' +
+      '  "  end if\\n" + \\\n' +
+      '  "  activate\\n" + \\\n' +
       '  "end tell"\n' +
       'with open("/tmp/_skim_goto.scpt", "w") as f: f.write(asc)\n' +
       'subprocess.Popen(["osascript", "/tmp/_skim_goto.scpt"])\n';
