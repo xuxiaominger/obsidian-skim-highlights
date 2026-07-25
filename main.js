@@ -140,6 +140,8 @@ module.exports = class SkimHighlightsPlugin extends Plugin {
     }
 
     // === Create clickable .command files for page navigation ===
+    var pdfPath = headerKV.PATH || '';
+    var pdfName = headerKV.NAME || 'Unknown';
     var encodedPath = encodeURI(pdfPath);
     var linkDir = path.join(os.tmpdir(), 'skim_links');
 
