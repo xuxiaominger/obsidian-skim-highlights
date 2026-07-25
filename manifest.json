@@ -1,0 +1,10 @@
+{
+  "id": "skim-highlights",
+  "name": "Skim Highlights",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "导入 Skim PDF 阅读器的高亮标注为 Obsidian 卡片，点击链接可跳回 PDF 原文位置",
+  "author": "Hermes",
+  "authorUrl": "",
+  "isDesktopOnly": true
+}
