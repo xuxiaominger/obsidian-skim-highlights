@@ -139,14 +139,64 @@ module.exports = class SkimHighlightsPlugin extends Plugin {
       return;
     }
 
-    // Generate markdown
-    var pdfPath = headerKV.PATH || '';
-    var pdfName = headerKV.NAME || 'Unknown';
-    var today = new Date().toISOString().slice(0, 10);
-
-    // URL-encode path so Obsidian renders skim:// link correctly
+    // === Create clickable .command files for page navigation ===
     var encodedPath = encodeURI(pdfPath);
-    // Short display name (filename only, max 20 chars)
+    var linkDir = path.join(os.tmpdir(), 'skim_links');
+
+    // Ensure directory exists
+    try { fs.mkdirSync(linkDir, { recursive: true }); } catch(_) {}
+
+    // Write PDF path config
+    fs.writeFileSync(path.join(linkDir, '.pdfpath'), encodedPath, 'utf8');
+
+    // Get unique pages and create .command files
+    var pages = [];
+    var seen = {};
+    highlights.forEach(function(h) {
+      if (!seen[h.page]) { seen[h.page] = true; pages.push(h.page); }
+    });
+
+    // Write static helper files
+    var gotoPy = '#!/usr/bin/env python3\n' +
+      '"""Navigate Skim to a specific page."""\n' +
+      'import sys, os, urllib.parse, subprocess\n' +
+      'page = sys.argv[1]\n' +
+      'with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".pdfpath")) as f:\n' +
+      '    filepath = urllib.parse.unquote(f.read().strip())\n' +
+      'asc = "tell application \\\"Skim\\\"\\n" + \\\n' +
+      '  "  repeat with d in documents\\n" + \\\n' +
+      '  "    if (path of d) is \\\"" + filepath + "\\\" then\\n" + \\\n' +
+      '  "      tell d to go to page " + page + "\\n" + \\\n' +
+      '  "      activate\\n" + \\\n' +
+      '  "      exit repeat\\n" + \\\n' +
+      '  "    end if\\n" + \\\n' +
+      '  "  end repeat\\n" + \\\n' +
+      '  "end tell"\n' +
+      'with open("/tmp/_skim_goto.scpt", "w") as f: f.write(asc)\n' +
+      'subprocess.Popen(["osascript", "/tmp/_skim_goto.scpt"])\n';
+
+    var tmplCmd = '#!/bin/bash\n' +
+      'PAGE=$(basename "$0" .command | sed "s/^p//")\n' +
+      'python3 "$(dirname "$0")/_goto.py" "$PAGE"\n';
+
+    fs.writeFileSync(path.join(linkDir, '_goto.py'), gotoPy, 'utf8');
+    fs.chmodSync(path.join(linkDir, '_goto.py'), '755');
+    fs.writeFileSync(path.join(linkDir, '_template.command'), tmplCmd, 'utf8');
+    fs.chmodSync(path.join(linkDir, '_template.command'), '755');
+
+    // Create page-specific .command files
+    pages.forEach(function(pg) {
+      var tgt = path.join(linkDir, 'p' + pg + '.command');
+      try {
+        fs.copyFileSync(path.join(linkDir, '_template.command'), tgt);
+        fs.chmodSync(tgt, '755');
+      } catch(e) { dlog('CMD_FAIL: ' + e.message); }
+    });
+
+    dlog('LINK_FILES_CREATED: ' + pages.length + ' pages');
+
+    // === Generate markdown ===
+    var today = new Date().toISOString().slice(0, 10);
     var shortName = pdfName.replace(/\.pdf$/i, '');
     if (shortName.length > 20) shortName = shortName.substring(0, 18) + '..';
 
@@ -163,7 +213,6 @@ module.exports = class SkimHighlightsPlugin extends Plugin {
     lines.push('> [!info] PDF 信息');
     lines.push('> 文件: ' + pdfName);
     lines.push('> 高亮数: ' + highlights.length);
-    lines.push('> [📖 全文](skim://' + encodedPath + '?page=1)');
     lines.push('');
     lines.push('---');
     lines.push('');
@@ -181,7 +230,7 @@ module.exports = class SkimHighlightsPlugin extends Plugin {
         lines.push('> [!quote]+ 第 ' + h.page + ' 页 · ' + today);
         lines.push('> ' + h.text);
         lines.push('> ');
-        lines.push('> 📖 [p' + h.page + '](skim://' + encodedPath + '?page=' + h.page + ')');
+        lines.push('> 📖 [p' + h.page + '](file://' + linkDir + '/p' + h.page + '.command)');
         lines.push('');
       });
     });

@@ -1,47 +1,41 @@
 # Skim Highlights → Obsidian 双链卡片
 
-在 Skim 中高亮 PDF → 一键导入 Obsidian 生成可回溯的双链卡片。
+Skim 高亮 → 一键导入 Obsidian，生成可点击跳回 PDF 原文的卡片。
 
-## 功能
+## 工作原理
 
-- 读取 Skim 当前打开 PDF 的所有高亮标注
-- 按页码分组，生成可折叠 markdown 卡片
-- 每条高亮附带 `skim://` 缩略链接，点击直接跳回 PDF 原文位置
-- 支持热键、命令面板、状态栏、侧边栏四种触发方式
+1. 插件读取 Skim 当前 PDF 的所有高亮标注
+2. 为每页生成 `.command` 跳转脚本（存入 `/tmp/skim_links/`）
+3. 卡片中的 `📖 [p187]` 是 `file://` 链接，点击即跳回原文精确位置
 
 ## 卡片格式
 
 ```markdown
 > [!quote]+ 第 187 页 · 2026-07-25
-> One advantage of functions is the way they separate blocks...
+> One advantage of functions is the way they separate...
 > 
-> 📖 [p187](skim:///path/to/pdf?page=187)
+> 📖 [p187](file:///tmp/skim_links/p187.command)
 ```
-
-- 链接文字不超过 5 个字符（如 `p187`）
-- `skim://` URL 自动编码，路径含空格/括号也能正常跳转
 
 ## 安装
 
 1. 下载 `main.js`、`manifest.json`、`versions.json`
-2. 放入 vault 的 `.obsidian/plugins/skim-highlights/` 目录
-3. 在 Obsidian 设置 → 第三方插件中启用 "Skim Highlights"
-4. 确保 Skim.app 已安装（macOS 独占）
+2. 放入 `.obsidian/plugins/skim-highlights/`
+3. 启用插件
+4. macOS + Skim 必须
 
 ## 使用
 
 | 方式 | 操作 |
 |------|------|
 | 快捷键 | `Cmd+Alt+Shift+K` |
-| 命令面板 | `Cmd+P` → 输入 "Import Skim" |
-| 状态栏 | 点击底部状态栏 "Skim" |
-| 侧边栏 | 点击左侧丝带高亮笔图标 |
+| 命令面板 | `Cmd+P` → "Import Skim" |
+| 状态栏 | 底部 "Skim" |
+| 侧边栏 | 高亮笔图标 |
 
-## 依赖
+## 首次使用
 
-- macOS + Skim.app
-- Obsidian ≥ 0.15.0
-- 系统需授予自动化权限（首次使用时 macOS 会提示）
+点击卡片链接时，macOS 可能弹出确认框 —— 这是因为 `.command` 文件需要执行权限。点"打开"即可，Skim 自动跳转到对应页面。
 
 ## 许可证
 
