@@ -1,9 +1,9 @@
 {
   "id": "skim-highlights",
   "name": "Skim Highlights",
-  "version": "1.1.2",
+  "version": "2.0.0",
   "minAppVersion": "0.15.0",
-  "description": "\u5bfc\u5165 Skim PDF \u9605\u8bfb\u5668\u7684\u9ad8\u4eae\u6807\u6ce8\u4e3a Obsidian \u5361\u7247\uff0c\u70b9\u51fb\u94fe\u63a5\u53ef\u8df3\u56de PDF \u539f\u6587\u4f4d\u7f6e",
+  "description": "Skim\u9ad8\u4eae\u2192\u526a\u8d34\u677f\u5361\u7247\uff0c\u5f39\u7a97\u9009\u62e9\uff0c\u7c98\u8d34\u5230\u4efb\u610f\u7b14\u8bb0",
   "author": "Hermes",
   "authorUrl": "",
   "isDesktopOnly": true

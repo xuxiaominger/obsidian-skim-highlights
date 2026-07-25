@@ -1,21 +1,32 @@
-# Skim Highlights → Obsidian 双链卡片
+# Skim Highlights → Obsidian 剪贴板卡片
 
-Skim 高亮 → 一键导入 Obsidian，生成可点击跳回 PDF 原文的卡片。
+Skim 高亮 → 弹窗选择 → 复制到剪贴板 → 粘贴到任意 Obsidian 笔记。
 
-## 工作原理
+## 工作流程
 
-1. 插件读取 Skim 当前 PDF 的所有高亮标注
-2. 为每页生成 `.command` 跳转脚本（存入 `/tmp/skim_links/`）
-3. 卡片中的 `📖 [p187]` 是 `file://` 链接，点击即跳回原文精确位置
+1. 在 Skim 中高亮 PDF
+2. Obsidian 中按 `Cmd+Alt+Shift+K`
+3. 弹窗显示所有高亮（支持搜索过滤）
+4. 选中一条 → 回车 → 卡片复制到剪贴板
+5. 到任意笔记中 `Cmd+V` 粘贴
 
 ## 卡片格式
 
 ```markdown
-> [!quote]+ 第 187 页 · 2026-07-25
+> [!quote]+ 第 187 页
 > One advantage of functions is the way they separate...
 > 
 > 📖 [p187](file:///tmp/skim_links/p187.command)
 ```
+
+点击 `📖 p187` → Skim 跳到 PDF 原文位置。
+
+## 命令
+
+| 命令 | 快捷键 | 说明 |
+|------|--------|------|
+| Skim 高亮 → 选择复制 | `Cmd+Alt+Shift+K` | 弹窗选一条复制 |
+| Skim 高亮 → 全部复制 | 命令面板 | 全部复制到剪贴板 |
 
 ## 安装
 
@@ -24,18 +35,9 @@ Skim 高亮 → 一键导入 Obsidian，生成可点击跳回 PDF 原文的卡�
 3. 启用插件
 4. macOS + Skim 必须
 
-## 使用
-
-| 方式 | 操作 |
-|------|------|
-| 快捷键 | `Cmd+Alt+Shift+K` |
-| 命令面板 | `Cmd+P` → "Import Skim" |
-| 状态栏 | 底部 "Skim" |
-| 侧边栏 | 高亮笔图标 |
-
 ## 首次使用
 
-点击卡片链接时，macOS 可能弹出确认框 —— 这是因为 `.command` 文件需要执行权限。点"打开"即可，Skim 自动跳转到对应页面。
+点击卡片中的 `📖 pXX` 链接时，macOS 可能弹出确认框。点"打开"即可。
 
 ## 许可证
 

@@ -1,4 +1,4 @@
-const { Plugin, Notice } = require('obsidian');
+const { Plugin, Notice, FuzzySuggestModal } = require('obsidian');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -8,265 +8,232 @@ const LOG = '/tmp/skim_plugin_debug.log';
 function dlog(msg) {
   try { fs.appendFileSync(LOG, new Date().toISOString() + ' ' + msg + '\n'); } catch(e) {}
 }
-dlog('=== MODULE LOADED ===');
 
+// ========== Highlight selection modal ==========
+class HighlightModal extends FuzzySuggestModal {
+  constructor(app, highlights, linkDir) {
+    super(app);
+    this.highlights = highlights;
+    this.linkDir = linkDir;
+    this.setPlaceholder('搜索高亮内容，回车复制到剪贴板...');
+  }
+
+  getItems() { return this.highlights; }
+
+  getItemText(h) {
+    // Show: "[p187] First 60 chars of text..."
+    var t = h.text.length > 60 ? h.text.substring(0, 60) + '...' : h.text;
+    return '[p' + h.page + '] ' + t;
+  }
+
+  onChooseItem(h) {
+    var card = buildCard(h, this.linkDir);
+    copyToClipboard(card);
+    new Notice('📋 p' + h.page + ' 卡片已复制到剪贴板');
+  }
+}
+
+// ========== Card builder ==========
+function buildCard(h, linkDir) {
+  var linkPath = path.join(linkDir, 'p' + h.page + '.command');
+  return '> [!quote]+ 第 ' + h.page + ' 页\n' +
+    '> ' + h.text + '\n' +
+    '> \n' +
+    '> 📖 [p' + h.page + '](file://' + linkPath + ')';
+}
+
+// ========== Clipboard (macOS pbcopy) ==========
+function copyToClipboard(text) {
+  try {
+    execSync('pbcopy', { input: text, timeout: 3000 });
+    return true;
+  } catch(e) {
+    dlog('CLIPBOARD_FAIL: ' + e.message);
+    return false;
+  }
+}
+
+// ========== AppleScript runner ==========
+function runAppleScript(scriptContent) {
+  var tmpFile = path.join(os.tmpdir(), 'skim_obsidian_export.scpt');
+  fs.writeFileSync(tmpFile, scriptContent, 'utf8');
+  try {
+    var result = execSync('osascript "' + tmpFile + '"', {
+      encoding: 'utf8', timeout: 15000, maxBuffer: 50 * 1024 * 1024
+    });
+    return result.trim();
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch(_) {}
+  }
+}
+
+// ========== Parser ==========
+function parseSkimOutput(raw) {
+  if (!raw || raw.startsWith('ERROR:')) {
+    return { error: raw || 'empty', highlights: [] };
+  }
+  var segments = raw.split('||NOTE|');
+  var headerKV = {};
+  segments[0].split('|').forEach(function(kv) {
+    var ci = kv.indexOf(':');
+    if (ci > 0) headerKV[kv.slice(0, ci).trim()] = kv.slice(ci + 1).trim();
+  });
+
+  var highlights = [];
+  for (var i = 1; i < segments.length; i++) {
+    var f = {};
+    segments[i].split('|').forEach(function(kv) {
+      var ci = kv.indexOf(':');
+      if (ci > 0) f[kv.slice(0, ci).trim()] = kv.slice(ci + 1).trim();
+    });
+    if (f.TEXT && f.PAGE) {
+      highlights.push({ text: f.TEXT, page: parseInt(f.PAGE), type: f.TYPE || 'highlight' });
+    }
+  }
+  return { pdfPath: headerKV.PATH || '', pdfName: headerKV.NAME || '', highlights: highlights };
+}
+
+// ========== .command file generator ==========
+function createLinkFiles(pdfPath, pages) {
+  var linkDir = path.join(os.tmpdir(), 'skim_links');
+  try { fs.mkdirSync(linkDir, { recursive: true }); } catch(_) {}
+
+  var encodedPath = encodeURI(pdfPath);
+  fs.writeFileSync(path.join(linkDir, '.pdfpath'), encodedPath, 'utf8');
+
+  // Write _goto.py (only once)
+  var gotoPy = '#!/usr/bin/env python3\n' +
+    'import sys, os, urllib.parse, subprocess\n' +
+    'page = sys.argv[1]\n' +
+    'with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".pdfpath")) as f:\n' +
+    '    filepath = urllib.parse.unquote(f.read().strip())\n' +
+    'asc = "tell application \\\"Skim\\\"\\n" + \\\n' +
+    '  "  repeat with d in documents\\n" + \\\n' +
+    '  "    if (path of d) is \\\"" + filepath + "\\\" then\\n" + \\\n' +
+    '  "      tell d to go to page " + page + "\\n" + \\\n' +
+    '  "      activate\\n" + \\\n' +
+    '  "      exit repeat\\n" + \\\n' +
+    '  "    end if\\n" + \\\n' +
+    '  "  end repeat\\n" + \\\n' +
+    '  "end tell"\n' +
+    'with open("/tmp/_skim_goto.scpt", "w") as f: f.write(asc)\n' +
+    'subprocess.Popen(["osascript", "/tmp/_skim_goto.scpt"])\n';
+  fs.writeFileSync(path.join(linkDir, '_goto.py'), gotoPy, 'utf8');
+  fs.chmodSync(path.join(linkDir, '_goto.py'), '755');
+
+  var tmpl = '#!/bin/bash\nPAGE=$(basename "$0" .command | sed "s/^p//")\npython3 "$(dirname "$0")/_goto.py" "$PAGE"\n';
+  fs.writeFileSync(path.join(linkDir, '_template.command'), tmpl, 'utf8');
+  fs.chmodSync(path.join(linkDir, '_template.command'), '755');
+
+  pages.forEach(function(pg) {
+    var tgt = path.join(linkDir, 'p' + pg + '.command');
+    try {
+      fs.copyFileSync(path.join(linkDir, '_template.command'), tgt);
+      fs.chmodSync(tgt, '755');
+    } catch(e) { dlog('CMD_FAIL: ' + e.message); }
+  });
+
+  return linkDir;
+}
+
+// ========== AppleScript ==========
+var SKIM_SCRIPT = '';
+SKIM_SCRIPT += 'tell application "Skim"\n';
+SKIM_SCRIPT += '  if (count of documents) is 0 then\n';
+SKIM_SCRIPT += '    return "ERROR:NO_DOCUMENT"\n';
+SKIM_SCRIPT += '  end if\n';
+SKIM_SCRIPT += '  set theDoc to front document\n';
+SKIM_SCRIPT += '  set docPath to path of theDoc\n';
+SKIM_SCRIPT += '  set docName to name of theDoc\n';
+SKIM_SCRIPT += '  set theNotes to notes of theDoc\n';
+SKIM_SCRIPT += '  set output to "PATH:" & docPath & "|NAME:" & docName\n';
+SKIM_SCRIPT += '  repeat with i from 1 to count of theNotes\n';
+SKIM_SCRIPT += '    set theNote to item i of theNotes\n';
+SKIM_SCRIPT += '    set noteType to type of theNote as string\n';
+SKIM_SCRIPT += '    if noteType contains "highlight" or noteType contains "underline" then\n';
+SKIM_SCRIPT += '      set noteText to text of theNote as string\n';
+SKIM_SCRIPT += '      set notePage to index of page of theNote as string\n';
+SKIM_SCRIPT += '      set output to output & "||NOTE|TYPE:" & noteType & "|PAGE:" & notePage & "|TEXT:" & noteText\n';
+SKIM_SCRIPT += '    end if\n';
+SKIM_SCRIPT += '  end repeat\n';
+SKIM_SCRIPT += '  return output\n';
+SKIM_SCRIPT += 'end tell\n';
+
+// ========== Plugin ==========
 module.exports = class SkimHighlightsPlugin extends Plugin {
   async onload() {
-    dlog('ONLOAD_START');
-    
-    // Ribbon icon (always visible, clickable)
-    this.addRibbonIcon('highlighter', 'Import Skim highlights', () => {
-      dlog('RIBBON_CLICKED');
-      this.importHighlights();
-    });
-    dlog('RIBBON_ADDED');
-    
-    // Status bar item
-    this.statusBarItem = this.addStatusBarItem();
-    this.statusBarItem.setText('Skim');
-    this.statusBarItem.onClickEvent(() => {
-      dlog('STATUSBAR_CLICKED');
-      this.importHighlights();
-    });
-    dlog('STATUSBAR_ADDED');
+    dlog('PLUGIN_LOADED');
 
-    // Command palette command  
+    this.addRibbonIcon('highlighter', 'Skim 高亮 → 剪贴板', () => this.pickHighlight());
+    this.addStatusBarItem().setText('Skim');
+
     this.addCommand({
-      id: 'import-skim-highlights',
-      name: 'Import Skim highlights',
+      id: 'pick-skim-highlight',
+      name: 'Skim 高亮 → 选择复制到剪贴板',
       hotkeys: [{ modifiers: ['Mod', 'Alt', 'Shift'], key: 'K' }],
-      callback: () => {
-        dlog('COMMAND_CALLED');
-        this.importHighlights();
-      }
+      callback: () => this.pickHighlight()
     });
-    dlog('COMMAND_REGISTERED');
-    
-    new Notice('Skim Highlights ready', 2000);
-    dlog('ONLOAD_DONE');
+
+    this.addCommand({
+      id: 'copy-all-skim-highlights',
+      name: 'Skim 高亮 → 全部复制到剪贴板',
+      callback: () => this.copyAllHighlights()
+    });
   }
 
   onunload() { dlog('UNLOAD'); }
 
-  importHighlights() {
-    dlog('IMPORT_START');
-    new Notice('Reading Skim...');
+  /** Read highlights from Skim, return {pdfPath, highlights, linkDir} */
+  readSkim() {
+    var raw = runAppleScript(SKIM_SCRIPT);
+    var parsed = parseSkimOutput(raw);
 
-    // Build AppleScript
-    var script = '';
-    script += 'tell application "Skim"\n';
-    script += '  if (count of documents) is 0 then\n';
-    script += '    return "ERROR:NO_DOCUMENT"\n';
-    script += '  end if\n';
-    script += '  set theDoc to front document\n';
-    script += '  set docPath to path of theDoc\n';
-    script += '  set docName to name of theDoc\n';
-    script += '  set theNotes to notes of theDoc\n';
-    script += '  set output to "PATH:" & docPath & "|NAME:" & docName\n';
-    script += '  repeat with i from 1 to count of theNotes\n';
-    script += '    set theNote to item i of theNotes\n';
-    script += '    set noteType to type of theNote as string\n';
-    script += '    if noteType contains "highlight" or noteType contains "underline" then\n';
-    script += '      set noteText to text of theNote as string\n';
-    script += '      set notePage to index of page of theNote as string\n';
-    script += '      set output to output & "||NOTE|TYPE:" & noteType & "|PAGE:" & notePage & "|TEXT:" & noteText\n';
-    script += '    end if\n';
-    script += '  end repeat\n';
-    script += '  return output\n';
-    script += 'end tell\n';
-
-    var tmpFile = path.join(os.tmpdir(), 'skim_obsidian_export.scpt');
-    
-    try {
-      fs.writeFileSync(tmpFile, script, 'utf8');
-      dlog('SCRIPT_WRITTEN');
-    } catch(e) {
-      dlog('WRITE_ERROR: ' + e.message);
-      new Notice('Error: ' + e.message);
-      return;
+    if (parsed.error) {
+      new Notice(parsed.error.includes('NO_DOCUMENT') ? 'Skim 中没有打开的 PDF' : '读取失败');
+      return null;
+    }
+    if (parsed.highlights.length === 0) {
+      new Notice('当前 PDF 没有高亮标注');
+      return null;
     }
 
-    var raw = '';
-    try {
-      dlog('EXEC_OSASCRIPT');
-      raw = execSync('osascript "' + tmpFile + '"', {
-        encoding: 'utf8',
-        timeout: 20000,
-        maxBuffer: 50 * 1024 * 1024
-      });
-      raw = raw.trim();
-      dlog('OSASCRIPT_OK, len=' + raw.length);
-    } catch(e) {
-      dlog('OSASCRIPT_FAIL: ' + e.message);
-      try { fs.unlinkSync(tmpFile); } catch(_) {}
-      new Notice('Skim error: ' + e.message);
-      return;
-    }
-
-    try { fs.unlinkSync(tmpFile); } catch(_) {}
-
-    if (!raw || raw.startsWith('ERROR:')) {
-      var err = raw || 'no output';
-      dlog('EMPTY_OR_ERROR: ' + err);
-      new Notice(err.includes('NO_DOCUMENT') ? 'No PDF open in Skim' : 'Error: ' + err);
-      return;
-    }
-
-    // Parse
-    var segments = raw.split('||NOTE|');
-    var headerKV = {};
-    segments[0].split('|').forEach(function(kv) {
-      var ci = kv.indexOf(':');
-      if (ci > 0) headerKV[kv.slice(0, ci).trim()] = kv.slice(ci + 1).trim();
-    });
-
-    var highlights = [];
-    for (var i = 1; i < segments.length; i++) {
-      var f = {};
-      segments[i].split('|').forEach(function(kv) {
-        var ci = kv.indexOf(':');
-        if (ci > 0) f[kv.slice(0, ci).trim()] = kv.slice(ci + 1).trim();
-      });
-      if (f.TEXT && f.PAGE) {
-        highlights.push({ text: f.TEXT, page: parseInt(f.PAGE), type: f.TYPE || 'highlight' });
-      }
-    }
-
-    dlog('PARSED: ' + highlights.length + ' highlights');
-
-    if (highlights.length === 0) {
-      new Notice('No highlights found');
-      return;
-    }
-
-    // === Create clickable .command files for page navigation ===
-    var pdfPath = headerKV.PATH || '';
-    var pdfName = headerKV.NAME || 'Unknown';
-    var encodedPath = encodeURI(pdfPath);
-    var linkDir = path.join(os.tmpdir(), 'skim_links');
-
-    // Ensure directory exists
-    try { fs.mkdirSync(linkDir, { recursive: true }); } catch(_) {}
-
-    // Write PDF path config
-    fs.writeFileSync(path.join(linkDir, '.pdfpath'), encodedPath, 'utf8');
-
-    // Get unique pages and create .command files
+    // Get unique pages and create link files
     var pages = [];
     var seen = {};
-    highlights.forEach(function(h) {
+    parsed.highlights.forEach(function(h) {
       if (!seen[h.page]) { seen[h.page] = true; pages.push(h.page); }
     });
 
-    // Write static helper files
-    var gotoPy = '#!/usr/bin/env python3\n' +
-      '"""Navigate Skim to a specific page."""\n' +
-      'import sys, os, urllib.parse, subprocess\n' +
-      'page = sys.argv[1]\n' +
-      'with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".pdfpath")) as f:\n' +
-      '    filepath = urllib.parse.unquote(f.read().strip())\n' +
-      'asc = "tell application \\\"Skim\\\"\\n" + \\\n' +
-      '  "  repeat with d in documents\\n" + \\\n' +
-      '  "    if (path of d) is \\\"" + filepath + "\\\" then\\n" + \\\n' +
-      '  "      tell d to go to page " + page + "\\n" + \\\n' +
-      '  "      activate\\n" + \\\n' +
-      '  "      exit repeat\\n" + \\\n' +
-      '  "    end if\\n" + \\\n' +
-      '  "  end repeat\\n" + \\\n' +
-      '  "end tell"\n' +
-      'with open("/tmp/_skim_goto.scpt", "w") as f: f.write(asc)\n' +
-      'subprocess.Popen(["osascript", "/tmp/_skim_goto.scpt"])\n';
+    var linkDir = createLinkFiles(parsed.pdfPath, pages);
+    dlog('READ: ' + parsed.highlights.length + ' highlights, ' + pages.length + ' pages');
 
-    var tmplCmd = '#!/bin/bash\n' +
-      'PAGE=$(basename "$0" .command | sed "s/^p//")\n' +
-      'python3 "$(dirname "$0")/_goto.py" "$PAGE"\n';
+    return { pdfPath: parsed.pdfPath, pdfName: parsed.pdfName, highlights: parsed.highlights, linkDir: linkDir };
+  }
 
-    fs.writeFileSync(path.join(linkDir, '_goto.py'), gotoPy, 'utf8');
-    fs.chmodSync(path.join(linkDir, '_goto.py'), '755');
-    fs.writeFileSync(path.join(linkDir, '_template.command'), tmplCmd, 'utf8');
-    fs.chmodSync(path.join(linkDir, '_template.command'), '755');
+  /** Show modal to pick one highlight */
+  pickHighlight() {
+    new Notice('正在读取 Skim...');
+    var data = this.readSkim();
+    if (!data) return;
 
-    // Create page-specific .command files
-    pages.forEach(function(pg) {
-      var tgt = path.join(linkDir, 'p' + pg + '.command');
-      try {
-        fs.copyFileSync(path.join(linkDir, '_template.command'), tgt);
-        fs.chmodSync(tgt, '755');
-      } catch(e) { dlog('CMD_FAIL: ' + e.message); }
+    new HighlightModal(this.app, data.highlights, data.linkDir).open();
+  }
+
+  /** Copy all highlights at once */
+  copyAllHighlights() {
+    new Notice('正在读取 Skim...');
+    var data = this.readSkim();
+    if (!data) return;
+
+    var cards = data.highlights.map(function(h) {
+      return buildCard(h, data.linkDir);
     });
 
-    dlog('LINK_FILES_CREATED: ' + pages.length + ' pages');
-
-    // === Generate markdown ===
-    var today = new Date().toISOString().slice(0, 10);
-    var shortName = pdfName.replace(/\.pdf$/i, '');
-    if (shortName.length > 20) shortName = shortName.substring(0, 18) + '..';
-
-    var lines = [];
-
-    lines.push('---');
-    lines.push('pdf: "' + pdfPath + '"');
-    lines.push('source: Skim');
-    lines.push('created: ' + today);
-    lines.push('---');
-    lines.push('');
-    lines.push('# ' + pdfName.replace(/\.pdf$/i, ''));
-    lines.push('');
-    lines.push('> [!info] PDF 信息');
-    lines.push('> 文件: ' + pdfName);
-    lines.push('> 高亮数: ' + highlights.length);
-    lines.push('');
-    lines.push('---');
-    lines.push('');
-
-    var groups = {};
-    highlights.forEach(function(h) {
-      if (!groups[h.page]) groups[h.page] = [];
-      groups[h.page].push(h);
-    });
-
-    Object.keys(groups).sort(function(a,b){return a-b;}).forEach(function(pg) {
-      lines.push('## 📍 第 ' + pg + ' 页');
-      lines.push('');
-      groups[pg].forEach(function(h) {
-        lines.push('> [!quote]+ 第 ' + h.page + ' 页 · ' + today);
-        lines.push('> ' + h.text);
-        lines.push('> ');
-        lines.push('> 📖 [p' + h.page + '](file://' + linkDir + '/p' + h.page + '.command)');
-        lines.push('');
-      });
-    });
-
-    var content = lines.join('\n');
-
-    var self = this;
-    var folderPath = 'Skim Highlights';
-    var noteName = pdfName.replace(/\.pdf$/i, '') + ' - 高亮笔记.md';
-    var fullPath = folderPath + '/' + noteName;
-
-    (async function() {
-      try {
-        var folder = self.app.vault.getAbstractFileByPath(folderPath);
-        if (!folder) {
-          folder = await self.app.vault.createFolder(folderPath);
-        }
-        var existing = self.app.vault.getAbstractFileByPath(fullPath);
-        if (existing) {
-          await self.app.vault.modify(existing, content);
-        } else {
-          await self.app.vault.create(fullPath, content);
-        }
-        dlog('SAVED_OK');
-        new Notice('Saved: ' + noteName + ' (' + highlights.length + ' highlights)');
-
-        var file = self.app.vault.getAbstractFileByPath(fullPath);
-        if (file) {
-          await self.app.workspace.getLeaf(false).openFile(file);
-        }
-      } catch(e) {
-        dlog('SAVE_ERROR: ' + e.message);
-        new Notice('Save error: ' + e.message);
-      }
-    })();
+    var all = cards.join('\n\n---\n\n');
+    if (copyToClipboard(all)) {
+      new Notice('📋 已复制 ' + data.highlights.length + ' 张卡片 (' + data.pdfName + ')');
+    } else {
+      new Notice('❌ 剪贴板写入失败');
+    }
   }
 };
